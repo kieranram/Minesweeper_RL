@@ -13,6 +13,8 @@ from datetime import datetime
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from matplotlib.animation import FuncAnimation, PillowWriter 
+
 sns.set_style('darkgrid')
 
 
@@ -28,6 +30,8 @@ class TrainingLog:
         self.lengths = [] # length of each game (to find end conditions)
 
         self.buffer = buffer_size
+
+        self.tests = []
 
     
     def log_step(self, state, action, reward, done):
@@ -53,7 +57,9 @@ class TrainingLog:
 
 class DQ_Sweeper:
   
-    def __init__(self, env, filters, sizes, eps0, eps_decay, eps_decay_freq, gamma, f = False, training_buffer = 500):
+    def __init__(self, env, filters, sizes, eps0, eps_decay, eps_decay_freq, gamma, 
+                testing_freq = 100, n_test = 10, save_freq = 10000, sname = 'model',
+                f = False, training_buffer = 500, min_eps = 0.01, weights = None):
         
         self.env = env
         
@@ -62,34 +68,44 @@ class DQ_Sweeper:
             self.model = keras.models.load_model(f)
         else:
             self.make_model(filters, sizes)
+
+        if weights:
+            temp_model = keras.models.load_model(weights)
+            for i, layer in enumerate(temp_model.layers):
+                layer_weights = layer.get_weights()
+                if len(layer_weights):
+                    self.model.layers[i].set_weights(layer_weights)
         
         self.epsilon = eps0
         self.eps_decay = eps_decay
         self.eps_freq = eps_decay_freq
+        self.min_eps = min_eps
         
         self.gamma = gamma
         
         self.logger = TrainingLog()
+        self.testing_freq = testing_freq
+        self.n_test = n_test
+
+        self.save_freq = save_freq
+        self.save_name = sname
         
         
     def make_model(self, filters, sizes):
         inputs = keras.Input(shape = self.env_shape)
-        print(inputs.shape)
 
         conv1 = Conv2D(filters[0], sizes[0], padding = 'same', activation = 'relu', input_shape = self.env_shape, data_format = 'channels_last')(inputs)
         conv1 = Conv2D(filters[0], sizes[0], padding = 'same', activation = 'relu')(conv1)
         conv1 = GaussianNoise(0.2)(conv1)
-        print(conv1.shape)
+        
         conv2 = Conv2D(filters[1], sizes[1],  padding = 'same', activation = 'relu')(conv1)
         conv2 = GaussianNoise(0.2)(conv2)
-        print(conv2.shape)
 
         conv3 = Conv2D(filters[2], sizes[2], padding = 'same', activation = 'relu')(conv2)
         conv3 = GaussianNoise(0.2)(conv3)
 
         conv4 = Conv2D(3, 1, padding = 'same', activation = 'relu')(conv3)
         output = Conv2D(1, 3, padding = 'same', activation = lambda x: tf.nn.leaky_relu(x, alpha=0.1))(conv4)
-        print(output.shape)
 
         model = keras.Model(inputs = inputs, outputs = output)
         model.compile('adam', loss='mse')
@@ -119,7 +135,10 @@ class DQ_Sweeper:
         steps = 0
         
         while True:
-            action = self.choose_action(current_state, use_eps = use_epsilon)
+            if steps == 0:
+                action = (np.random.randint(self.env.n_rows), np.random.randint(self.env.n_cols))
+            else:
+                action = self.choose_action(current_state, use_eps = use_epsilon)
             new_state, reward, done, _ = self.env.step(action)
             steps += 1
 
@@ -129,9 +148,23 @@ class DQ_Sweeper:
             if done: 
                 if log:
                     self.logger.log_final(new_state, steps)
-                break
+                    return 
+                else:
+                    # if not logging, send boolean indicator of success
+                    if reward == self.env.completion_reward:
+                        success = True
+                    else:
+                        success = False
+                    return success
 
             current_state = new_state
+
+    def run_test(self, n):
+        successes = 0
+        for _ in range(n):
+            success = self.run_episode(log = False, use_epsilon = False)
+            successes += success
+        return successes/n
 
     def fit(self, batch_size):
         n_hist = self.logger.states.shape[0]
@@ -152,7 +185,7 @@ class DQ_Sweeper:
         # mod to deal with case of last sample being chosen
         q_maxes = self.model.predict(self.logger.states[(samps + 1) % n_hist]).max(axis = (1, 2, 3)) 
         adj = q_maxes * (1 - is_end) # if not the final move, add value of next state
-        vals = rewards + adj
+        vals = rewards + adj * self.gamma # scale by gamma
 
         for i in range(batch_size):
             x, y = actions[i]
@@ -161,7 +194,30 @@ class DQ_Sweeper:
 
         self.model.fit(states, preds, verbose = False)
 
-    def show_single(self, seed = None):
+    def decay_epsilon(self):
+        if self.epsilon > self.min_eps:
+            self.epsilon *= self.eps_decay
+
+    def save_model(self, f_annot = ''):
+        ts = datetime.now().strftime('%M_%H_%d%b%y')
+        self.model.save(f'Models/{self.save_name}_{f_annot}_{ts}')
+
+    def training_loop(self, n_eps, batch_size):
+        for i in tqdm(range(n_eps)):
+            self.run_episode()
+            self.fit(batch_size)
+
+            if (i + 1) % self.eps_freq == 0:
+                self.decay_epsilon()
+            
+            if (i + 1) % self.testing_freq == 0:
+                r = self.run_test(self.n_test)
+                self.logger.tests.append(r)
+
+            if (i + 1) % self.save_freq == 0:
+                self.save_model(f_annot = i + 1)
+
+    def show_single(self, fname, seed = None):
         np.random.seed(seed)
         self.env.prime()
 
@@ -190,16 +246,23 @@ class DQ_Sweeper:
                 break
             current_state = new_state
 
-        plt.figure(figsize = (10, 5 * steps))
+        plt.figure(figsize = (10, 5))
 
-        for i in range(steps):
-            l = plt.subplot(steps, 2, 2 * i + 1)
-            r = plt.subplot(steps, 2, 2 * i + 2)
+        fig = plt.gcf()
+        ax1 = plt.subplot(1, 2, 1)
+        ax2 = plt.subplot(1, 2, 2)
+
+        def update(i):
+            ax1.cla()
+            ax2.cla()
+            ax1.set_title(f'Step {i}')
+            sns.heatmap(states[i], ax = ax1, annot = True, cbar = False, vmin = -1, vmax = 5)
+            sns.heatmap(vals[i], ax = ax2, cbar = False)
             
-            sns.heatmap(states[i], ax = l, annot = True, cbar = False, vmin = -1, vmax = 5)
-            sns.heatmap(vals[i], ax = r, cbar = False)
+        ani = FuncAnimation(fig, update, steps, interval = 500, repeat_delay = 2000)
 
-        plt.show()
+        writer = PillowWriter(fps = 2)
+        ani.save(f'Images/{fname}.gif', writer = 'imagemagick')
 
 
 

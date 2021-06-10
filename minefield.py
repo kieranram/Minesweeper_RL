@@ -113,7 +113,7 @@ class Minefield(gym.Env):
             for y, el in enumerate(row):
                 out_array[0, x, y, int(el + 1)] = 1
 
-        return np.concatenate([out_array, np.ones((1, 8, 8, 1))], axis = -1)
+        return np.concatenate([out_array, np.ones((1, self.n_rows, self.n_cols, 1))], axis = -1)
         
     def zero_block(self, coord, ret = None):
         '''
