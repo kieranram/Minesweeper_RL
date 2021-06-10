@@ -142,6 +142,9 @@ class DQ_Sweeper:
             new_state, reward, done, _ = self.env.step(action)
             steps += 1
 
+            if steps > self.env.n_rows * self.env.n_cols:
+                done = True
+
             if log:
                 self.logger.log_step(current_state, action, reward, done)
 
@@ -261,7 +264,6 @@ class DQ_Sweeper:
             
         ani = FuncAnimation(fig, update, steps, interval = 500, repeat_delay = 2000)
 
-        writer = PillowWriter(fps = 2)
         ani.save(f'Images/{fname}.gif', writer = 'imagemagick')
 
 
