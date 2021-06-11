@@ -109,7 +109,6 @@ class DQ_Sweeper:
 
         model = keras.Model(inputs = inputs, outputs = output)
         model.compile('adam', loss='mse')
-        print('Model Made')
         
         self.model = model
         
@@ -233,10 +232,10 @@ class DQ_Sweeper:
         while True:
             pred = self.model.predict(current_state).reshape(self.env_shape[0], self.env_shape[1])
             row, col = np.where(pred == pred.max())
+            row, col = row[0], col[0]
 
             states.append(self.env.last_obs)
             vals.append(pred)
-            row, col = row[0], col[0]
             new_state, _, done, _ = self.env.step((row, col))
             steps += 1
 
