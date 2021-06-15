@@ -248,11 +248,14 @@ class DQ_Sweeper:
                 break
             current_state = new_state
 
-        plt.figure(figsize = (10, 5))
+        plt.figure(figsize = (15, 5))
 
         fig = plt.gcf()
-        ax1 = plt.subplot(1, 2, 1)
-        ax2 = plt.subplot(1, 2, 2)
+        mi_ax = plt.subplot(1, 3, 1)
+        ax1 = plt.subplot(1, 3, 2)
+        ax2 = plt.subplot(1, 3, 3)
+        
+        sns.heatmap(self.env.is_mine, ax = mi_ax)
 
         def update(i):
             ax1.cla()
