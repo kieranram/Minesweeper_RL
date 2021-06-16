@@ -31,7 +31,8 @@ The network learns by playing Minesweeper repeatedly. After each game the learne
 
 ## Results
 
-While the graph for this was lost, we saw the model take a while to pick up how to not lose a game before steadily improving. Once this improvement began it was quite consistent, with a 10% improvement every 10,000 iterations played. We would expect this to slow and eventually plateau, and will continue to train models to confirm this. 
+The graph below shows the model's performance over time, tested on 10 boards with no parameter noise or random guesses. The model took a while to get started, before consistently improving for a stretch. Progress appears to slow and reverse towards the end of this training phase (100,000 games, training at the end of each one), it is entirely possible that the learner will adjust trajectory and continue improving. This seems to be much faster improvement than many other learners achieve,
+![Test Scores](TestScores.png)
 
 While the learner is still being tweaked, initial results are quite good. After approximately 100,000 games, the model was logging a 65% success rate on 8x8 boards containing 10 mines. Below is a game it played, with the heatmap on the right showing its approximated values (without scale, since we only really care about its favored action). 
 
@@ -44,4 +45,3 @@ Taking the same weights and applying them to a larger, much mine-y board we see 
 ## TODO
 - Build a Double Deep-Q Learner
 - Trying U-Net style architecture
-- Add training graphs
