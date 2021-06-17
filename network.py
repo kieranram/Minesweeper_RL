@@ -201,8 +201,8 @@ class DQ_Sweeper:
             self.epsilon *= self.eps_decay
 
     def save_model(self, f_annot = ''):
-        ts = datetime.now().strftime('%M_%H_%d%b%y')
-        self.model.save(f'Models/{self.save_name}_{f_annot}_{ts}')
+        ts = datetime.now().strftime('%y%b%d_%H_%M')
+        self.model.save(f'Models/{self.save_name}_{ts}_{f_annot}')
 
     def training_loop(self, n_eps, batch_size):
         for i in tqdm(range(n_eps)):
